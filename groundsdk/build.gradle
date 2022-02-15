@@ -1,0 +1,75 @@
+import org.gradle.util.VersionNumber
+
+apply plugin: 'com.android.library'
+apply plugin: 'com.github.dcendents.android-maven'
+
+android {
+    defaultConfig {
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+        // NOTE : As of AGP 4.1.0, VERSION_NAME is not relevant anymore for libraries and thus is
+        //        not automatically injected in BuildConfig by the plugin anymore.
+        //        We emulate the former behavior here.
+        if (VersionNumber.parse(com.android.builder.model.Version.ANDROID_GRADLE_PLUGIN_VERSION)
+            >= VersionNumber.parse('4.1.0')) {
+            buildConfigField('String', 'VERSION_NAME', '"0.0.0"')
+        }
+    }
+
+    sourceSets.androidTest.java.srcDirs += 'unittest-tools/java'
+
+    resourcePrefix 'gsdk_'
+}
+
+dependencies {
+    implementation project(':sdkcore')
+
+    implementation androidXLocalBroadcastManager
+
+    implementation googlePlayServicesLocation
+
+    implementation retrofit
+    implementation retrofitGsonConverter
+    implementation retrofitScalarsConverter
+    implementation retrofitLoggingInterceptor
+
+    implementation androidXAnnotations
+
+    androidTestImplementation androidXTestCore
+    androidTestImplementation(androidXTestRunner) {
+        // android test runner comes with its own hamcrest-core library, but an older version that
+        // what we wish to use, so exclude it to avoid conflict with our own
+        exclude module: 'hamcrest-core'
+    }
+    androidTestImplementation hamcrest
+    androidTestImplementation mockito
+}
+
+task javadoc(type: Javadoc) {
+    doFirst {
+        if (!JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_11)) {
+            throw new TaskInstantiationException("Javadoc must be generated using JDK 11+")
+        }
+    }
+
+    exclude '**/internal/**'
+    destinationDir file("${buildDir}/doc")
+
+    afterEvaluate {
+        source android.sourceSets.main.java.srcDirs
+        classpath = files(android.bootClasspath)
+        android.libraryVariants.matching { it.name == 'release' }.all {
+            javaCompileProvider.with {
+                dependsOn it
+                classpath += get().with { files(classpath, destinationDir) }
+            }
+        }
+
+        options {
+            source android.compileOptions.sourceCompatibility.majorVersion
+            linksOffline 'http://d.android.com/reference/', "${android.sdkDirectory}/docs/reference"
+            if (!JavaVersion.current().isCompatibleWith(JavaVersion.VERSION_13)) {
+                addBooleanOption '-no-module-directories', true
+            }
+        }
+    }
+}
